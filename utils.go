@@ -72,6 +72,7 @@ func readMessage(filename string) ([]byte, *big.Int, *big.Int) {
 	msg, err := os.ReadFile(WGLiteArgs[2][3])
 	if err != nil {
 		fmt.Println("Error reading file")
+		os.Exit(0)
 	}
 
 	sigatureLength := msg[len(msg)-1]
