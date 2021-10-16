@@ -1,6 +1,7 @@
 package main
 
 import (
+	"compromiser/pkg/noise"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"fmt"
@@ -12,58 +13,28 @@ var (
 	defaultPathToBinary string = "/home/shreyas/go/src/github.com/alichator/wg-lite/wg-lite"
 )
 
-func GenBadPriv() (k *big.Int) {
-	k = new(big.Int).SetInt64(32) // exact value of k can be changed
-	return
-}
-
-// GenerateKey returns a ecdsa keypair
-func GenerateKey(c elliptic.Curve) *ecdsa.PrivateKey {
-	k := GenBadPriv() // problem
-	priv := new(ecdsa.PrivateKey)
-	priv.PublicKey.Curve = c
-	priv.D = k // problem
-	priv.PublicKey.X, priv.PublicKey.Y = c.ScalarBaseMult(k.Bytes())
-	return priv
-}
-
-// RandomInc is a simple random number generator that uses the power of
-// incrementing to produce "secure" random numbers
-type RandomInc byte
-
-func (r *RandomInc) Read(p []byte) (int, error) {
-	for i := range p {
-		p[i] = byte(*r)
-		*r = (*r) + 1
-	}
-	return len(p), nil
-}
-
 func main() {
 	if len(os.Args) == 2 {
 		defaultPathToBinary = os.Args[1]
 	}
 
-	// cs := noise.NewCipherSuite(noise.DH25519, noise.CipherAESGCM, noise.HashSHA256)
-	// ecdsakey := GenerateKey(elliptic.P256())
-	// rngR := new(RandomInc)
-	// *rngR = RandomInc(1)
-	// var privbytes [32]byte
-	// staticRbad, _ := noise.GenerateBadKeypair(ecdsakey.D.FillBytes(privbytes[:])) // problem
+	cs := noise.NewCipherSuite(noise.DH25519, noise.CipherAESGCM, noise.HashSHA256)
+	ecdsakey := generateKey(elliptic.P256())
+	rngR := new(RandomInc)
+	*rngR = RandomInc(1)
+	var privbytes [32]byte
+	staticRbad, _ := noise.GenerateBadKeypair(ecdsakey.D.FillBytes(privbytes[:])) // problem
 
-	// // var cs1, cs2 *noise.CipherState
-	// hsR, _ := noise.NewHandshakeState(noise.Config{
-	// 	CipherSuite:   cs,
-	// 	Random:        rngR,
-	// 	Pattern:       noise.HandshakeIKSign,
-	// 	Prologue:      []byte("ABC"),
-	// 	StaticKeypair: staticRbad,
-	// 	SigningKey:    ecdsakey,
-	// 	VerifyingKey:  ecdsakey.Public().(*ecdsa.PublicKey),
-	// })
-
-	// hsR.ReadMessage(nil, msg)
-	// fmt.Printf("%+v", hsR)
+	// var cs1, cs2 *noise.CipherState
+	hsR, _ := noise.NewHandshakeState(noise.Config{
+		CipherSuite:   cs,
+		Random:        rngR,
+		Pattern:       noise.HandshakeIKSign,
+		Prologue:      []byte("ABC"),
+		StaticKeypair: staticRbad,
+		SigningKey:    ecdsakey,
+		VerifyingKey:  ecdsakey.Public().(*ecdsa.PublicKey),
+	})
 
 	var (
 		hashes = make([][]byte, 2)
@@ -85,6 +56,9 @@ func main() {
 	fmt.Println("s:", s)
 	fmt.Println("hash:", hashes)
 
-	// secret := hsR.RecoverSecret(r, s, k, hash)
-	// fmt.Println(secret)
+	nonce := hsR.ExtractNonce(s, hashes)
+	fmt.Println("nonce: ", nonce)
+
+	secret := hsR.RecoverSecret(r[1], s[1], nonce, hashes[1])
+	fmt.Println("secret: ", secret)
 }

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"fmt"
 	"math/big"
 	"os"
@@ -11,6 +13,7 @@ import (
 	"golang.org/x/crypto/cryptobyte/asn1"
 )
 
+// Arguments for wg-lite
 var WGLiteArgs = map[int][]string{
 	1: {"client", "1", "1", "client-message-1", "server-message-1", "server-message-2"},
 	2: {"server", "1", "1", "server-message-1", "client-message-1", "client-message-2"},
@@ -19,6 +22,39 @@ var WGLiteArgs = map[int][]string{
 	5: {"client", "1", "3", "client-message-3", "server-message-1", "server-message-2"},
 }
 
+// Re-used from wg-lite
+func genBadPriv() (k *big.Int) {
+	k = new(big.Int).SetInt64(32) // exact value of k can be changed
+	return
+}
+
+// generateKey returns a ecdsa keypair
+// Re-used from wg-lite
+func generateKey(c elliptic.Curve) *ecdsa.PrivateKey {
+	k := genBadPriv() // problem
+	priv := new(ecdsa.PrivateKey)
+	priv.PublicKey.Curve = c
+	priv.D = k // problem
+	priv.PublicKey.X, priv.PublicKey.Y = c.ScalarBaseMult(k.Bytes())
+	return priv
+}
+
+// RandomInc is a simple random number generator that uses the power of
+// incrementing to produce "secure" random numbers
+// Re-used from wg-lite
+type RandomInc byte
+
+// Re-used from wg-lite
+func (r *RandomInc) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = byte(*r)
+		*r = (*r) + 1
+	}
+	return len(p), nil
+}
+
+// runWGLite runs the `wg-lite` binary with arguments based on the
+// given step.
 func runWGLite(seed, step int) {
 	args := WGLiteArgs[step]
 	args[1] = strconv.FormatInt(int64(seed), 10)
@@ -30,6 +66,8 @@ func runWGLite(seed, step int) {
 	fmt.Println(string(output))
 }
 
+// readMessage reads the intermediate messages and returns the hash,
+// (r, s) from the signature.
 func readMessage(filename string) ([]byte, *big.Int, *big.Int) {
 	msg, err := os.ReadFile(WGLiteArgs[2][3])
 	if err != nil {
