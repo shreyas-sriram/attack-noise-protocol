@@ -1,8 +1,8 @@
 run: build
-	./compromiser
+	@./compromiser
 
 build:
-	go build .
+	@go build .
 
 clean:
-	rm client-* server-* compromiser
+	@rm client-* server-* compromiser
