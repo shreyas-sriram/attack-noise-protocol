@@ -1,27 +1,29 @@
 package noise
 
 import (
-//    "crypto"
+	//    "crypto"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/sha512"
-    "crypto/ecdsa"
-    "crypto/elliptic"
 	"encoding/binary"
-    "errors"
+	"errors"
 	"hash"
 	"io"
-    "math/big"
+	"math/big"
 
 	"golang.org/x/crypto/blake2b"
 	"golang.org/x/crypto/blake2s"
 	"golang.org/x/crypto/chacha20poly1305"
-	"golang.org/x/crypto/curve25519"
-    "golang.org/x/crypto/cryptobyte"
+	"golang.org/x/crypto/cryptobyte"
 	"golang.org/x/crypto/cryptobyte/asn1"
+	"golang.org/x/crypto/curve25519"
 )
+
+var Nonce string = ""
 
 // A DHKey is a keypair used for Diffie-Hellman key agreement.
 type DHKey struct {
@@ -172,21 +174,21 @@ var errZeroParam = errors.New("zero parameter")
 // used for the signature. The function returns the ASN.1 encoded signature
 func ECDSASign(priv *ecdsa.PrivateKey, c elliptic.Curve, hash []byte) ([]byte, error) {
 	var r, s *big.Int
-    N := c.Params().N
+	N := c.Params().N
 	if N.Sign() == 0 {
 		return nil, errZeroParam
 	}
 	var k, kInv *big.Int
 	for {
 		for {
-            k = new(big.Int)
-            k.SetBytes([]byte("secure nonce"))
+			k = new(big.Int)
+			k.SetBytes([]byte(Nonce))
 
 			if in, ok := priv.Curve.(invertible); ok {
 				kInv = in.Inverse(k)
 			}
 
-            r, _ = priv.Curve.ScalarBaseMult(k.Bytes())
+			r, _ = priv.Curve.ScalarBaseMult(k.Bytes())
 			r.Mod(r, N)
 			if r.Sign() != 0 {
 				break
@@ -194,7 +196,7 @@ func ECDSASign(priv *ecdsa.PrivateKey, c elliptic.Curve, hash []byte) ([]byte, e
 		}
 
 		e := hashToInt(hash, c)
-        s = new(big.Int).Mul(priv.D, r)
+		s = new(big.Int).Mul(priv.D, r)
 		s.Add(s, e)
 		s.Mul(s, kInv)
 		s.Mod(s, N) // N != 0
@@ -202,7 +204,7 @@ func ECDSASign(priv *ecdsa.PrivateKey, c elliptic.Curve, hash []byte) ([]byte, e
 			break
 		}
 	}
-    var b cryptobyte.Builder
+	var b cryptobyte.Builder
 	b.AddASN1(asn1.SEQUENCE, func(b *cryptobyte.Builder) {
 		b.AddASN1BigInt(r)
 		b.AddASN1BigInt(s)
@@ -225,7 +227,7 @@ func ECDSAVerify(pub *ecdsa.PublicKey, c elliptic.Curve, hash, sig []byte) bool 
 		!inner.Empty() {
 		return false
 	}
-    e := hashToInt(hash, c)
+	e := hashToInt(hash, c)
 	var w *big.Int
 	N := c.Params().N
 	if in, ok := c.(invertible); ok {
