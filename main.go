@@ -1,46 +1,16 @@
 package main
 
 import (
-	"compromiser/pkg/noise"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"fmt"
 	"math/big"
 	"os"
-	"os/exec"
-
-	"golang.org/x/crypto/cryptobyte"
-	"golang.org/x/crypto/cryptobyte/asn1"
 )
-
-// type WGLiteArgs struct {
-// 	pathToBinary            string
-// 	seed                    int
-// 	step                    int
-// 	outgoingMessageFile     string
-// 	incomingMessageFile     string
-// 	tempIncomingMessageFile string
-// }
-
-var WGLiteArgs = map[int][]string{
-	1: {"client", "1", "1", "client-message-1", "server-message-1", "server-message-2"},
-	2: {"server", "1", "1", "server-message-1", "client-message-1", "client-message-2"},
-	3: {"client", "1", "2", "client-message-2", "server-message-1", "server-message-2"},
-	4: {"server", "1", "2", "server-message-2", "client-message-1", "client-message-2"},
-	5: {"client", "1", "3", "client-message-3", "server-message-1", "server-message-2"},
-}
 
 var (
 	defaultPathToBinary string = "/home/shreyas/go/src/github.com/alichator/wg-lite/wg-lite"
 )
-
-func runWGLite(step int) {
-	output, err := exec.Command(defaultPathToBinary, WGLiteArgs[step]...).Output()
-	if err != nil {
-		fmt.Println(err.Error())
-	}
-	fmt.Println(string(output))
-}
 
 func GenBadPriv() (k *big.Int) {
 	k = new(big.Int).SetInt64(32) // exact value of k can be changed
@@ -74,61 +44,47 @@ func main() {
 		defaultPathToBinary = os.Args[1]
 	}
 
-	runWGLite(1)
-	runWGLite(2)
+	// cs := noise.NewCipherSuite(noise.DH25519, noise.CipherAESGCM, noise.HashSHA256)
+	// ecdsakey := GenerateKey(elliptic.P256())
+	// rngR := new(RandomInc)
+	// *rngR = RandomInc(1)
+	// var privbytes [32]byte
+	// staticRbad, _ := noise.GenerateBadKeypair(ecdsakey.D.FillBytes(privbytes[:])) // problem
 
-	cs := noise.NewCipherSuite(noise.DH25519, noise.CipherAESGCM, noise.HashSHA256)
-	ecdsakey := GenerateKey(elliptic.P256())
-	rngR := new(RandomInc)
-	*rngR = RandomInc(1)
-	var privbytes [32]byte
-	staticRbad, _ := noise.GenerateBadKeypair(ecdsakey.D.FillBytes(privbytes[:])) // problem
+	// // var cs1, cs2 *noise.CipherState
+	// hsR, _ := noise.NewHandshakeState(noise.Config{
+	// 	CipherSuite:   cs,
+	// 	Random:        rngR,
+	// 	Pattern:       noise.HandshakeIKSign,
+	// 	Prologue:      []byte("ABC"),
+	// 	StaticKeypair: staticRbad,
+	// 	SigningKey:    ecdsakey,
+	// 	VerifyingKey:  ecdsakey.Public().(*ecdsa.PublicKey),
+	// })
 
-	// var cs1, cs2 *noise.CipherState
-	hsR, _ := noise.NewHandshakeState(noise.Config{
-		CipherSuite:   cs,
-		Random:        rngR,
-		Pattern:       noise.HandshakeIKSign,
-		Prologue:      []byte("ABC"),
-		StaticKeypair: staticRbad,
-		SigningKey:    ecdsakey,
-		VerifyingKey:  ecdsakey.Public().(*ecdsa.PublicKey),
-	})
-
-	msg, _ := os.ReadFile(WGLiteArgs[2][3])
-	fmt.Println(msg)
-
-	hsR.ReadMessage(nil, msg)
+	// hsR.ReadMessage(nil, msg)
 	// fmt.Printf("%+v", hsR)
 
-	sigatureLength := msg[len(msg)-1]
-	hash := msg[:len(msg)-int(sigatureLength)-1]
-	signature := msg[len(msg)-int(sigatureLength)-1 : len(msg)-1]
-
-	fmt.Println(hash)
-	fmt.Println(signature)
-	fmt.Println(sigatureLength)
-
 	var (
-		r, s  = &big.Int{}, &big.Int{}
-		k     = "secure nonce"
-		inner cryptobyte.String
+		hashes = make([][]byte, 2)
+		r      = make([]*big.Int, 2)
+		s      = make([]*big.Int, 2)
 	)
 
-	input := cryptobyte.String(signature)
-	if !input.ReadASN1(&inner, asn1.SEQUENCE) ||
-		!input.Empty() ||
-		!inner.ReadASN1Integer(r) ||
-		!inner.ReadASN1Integer(s) ||
-		!inner.Empty() {
-		fmt.Println("Error")
+	for i := 0; i < 2; i++ {
+		runWGLite(i, 1)
+		runWGLite(i, 2)
+
+		_hash, _r, _s := readMessage(WGLiteArgs[2][3])
+		hashes[i] = _hash
+		r[i] = _r
+		s[i] = _s
 	}
 
 	fmt.Println("r:", r)
 	fmt.Println("s:", s)
-	fmt.Println("k:", k)
-	fmt.Println("hash:", hash)
+	fmt.Println("hash:", hashes)
 
-	secret := hsR.RecoverSecret(r, s, k, hash)
-	fmt.Println(secret)
+	// secret := hsR.RecoverSecret(r, s, k, hash)
+	// fmt.Println(secret)
 }
