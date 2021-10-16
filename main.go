@@ -13,11 +13,7 @@ var (
 	defaultPathToBinary string = "/home/shreyas/go/src/github.com/alichator/wg-lite/wg-lite"
 )
 
-func main() {
-	if len(os.Args) == 2 {
-		defaultPathToBinary = os.Args[1]
-	}
-
+func attackHandshake() (string, *big.Int) {
 	var (
 		hashes = make([][]byte, 2)
 		r      = make([]*big.Int, 2)
@@ -32,9 +28,9 @@ func main() {
 		hashes[i], r[i], s[i] = readMessage(WGLiteArgs[2][3])
 	}
 
-	fmt.Println("r:", r)
-	fmt.Println("s:", s)
-	fmt.Println("hash:", hashes)
+	// fmt.Println("r:", r)
+	// fmt.Println("s:", s)
+	// fmt.Println("hash:", hashes)
 
 	cs := noise.NewCipherSuite(noise.DH25519, noise.CipherAESGCM, noise.HashSHA256)
 	ecdsakey := generateKey(elliptic.P256())
@@ -45,8 +41,51 @@ func main() {
 	})
 
 	nonce := hsM.RecoverNonce(s, hashes)
-	fmt.Println("nonce: ", nonce)
-
 	secret := hsM.RecoverSecret(r[1], s[1], nonce, hashes[1])
-	fmt.Println("secret: ", secret)
+
+	return nonce, secret
+}
+
+func main() {
+	if len(os.Args) == 2 {
+		defaultPathToBinary = os.Args[1]
+	}
+
+	noise.Nonce, secret = attackHandshake()
+	// fmt.Println("nonce: ", noise.Nonce)
+	// fmt.Println("secret: ", secret)
+
+	hsM := createNoiseHandshakeState()
+
+	var cs1, cs2 *noise.CipherState
+
+	// step 1
+	msg, _, _, _ := hsM.WriteMessage(nil, nil)
+	err := os.WriteFile(WGLiteArgs[1][3], msg, 0666)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(0)
+	}
+
+	runWGLite(2, 2)
+
+	// step 2
+	msg, _ = os.ReadFile(WGLiteArgs[3][4])
+	var res []byte
+	res, cs1, cs2, err = hsM.ReadMessage(nil, msg)
+	if err != nil {
+		fmt.Println(err)
+	}
+	res, _ = cs1.Encrypt(nil, nil, []byte("secret"))
+
+	if err = os.WriteFile(WGLiteArgs[3][3], res, 0666); err != nil {
+		fmt.Println(err)
+	}
+
+	runWGLite(2, 4)
+
+	// step 3
+	ct, _ := os.ReadFile(WGLiteArgs[5][5])
+	msg, _ = cs2.Decrypt(nil, nil, ct)
+	fmt.Println(string(msg))
 }

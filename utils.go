@@ -1,6 +1,7 @@
 package main
 
 import (
+	"compromiser/pkg/noise"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"fmt"
@@ -22,9 +23,13 @@ var WGLiteArgs = map[int][]string{
 	5: {"client", "1", "3", "client-message-3", "server-message-1", "server-message-2"},
 }
 
+var (
+	secret *big.Int = new(big.Int)
+)
+
 // Re-used from wg-lite
 func genBadPriv() (k *big.Int) {
-	k = new(big.Int).SetInt64(32) // exact value of k can be changed
+	k = new(big.Int).SetInt64(secret.Int64()) // exact value of k can be changed
 	return
 }
 
@@ -59,11 +64,11 @@ func runWGLite(seed, step int) {
 	args := WGLiteArgs[step]
 	args[1] = strconv.FormatInt(int64(seed), 10)
 
-	output, err := exec.Command(defaultPathToBinary, args...).Output()
+	_, err := exec.Command(defaultPathToBinary, args...).Output()
 	if err != nil {
 		fmt.Println(err.Error())
 	}
-	fmt.Println(string(output))
+	// fmt.Println(string(output))
 }
 
 // readMessage reads the intermediate messages and returns the hash,
@@ -94,4 +99,28 @@ func readMessage(filename string) ([]byte, *big.Int, *big.Int) {
 	}
 
 	return hash, r, s
+}
+
+func createNoiseHandshakeState() *noise.HandshakeState {
+	cs := noise.NewCipherSuite(noise.DH25519, noise.CipherAESGCM, noise.HashSHA256)
+	ecdsakey := generateKey(elliptic.P256())
+
+	rngI := new(RandomInc)
+	staticI, _ := cs.GenerateKeypair(rngI)
+
+	var privbytes [32]byte
+	staticRbad, _ := noise.GenerateBadKeypair(ecdsakey.D.FillBytes(privbytes[:])) // problem
+
+	hsI, _ := noise.NewHandshakeState(noise.Config{
+		CipherSuite:   cs,
+		Random:        rngI,
+		Pattern:       noise.HandshakeIKSign,
+		Initiator:     true,
+		Prologue:      []byte("ABC"),
+		StaticKeypair: staticI,
+		PeerStatic:    staticRbad.Public,
+		VerifyingKey:  ecdsakey.Public().(*ecdsa.PublicKey),
+	})
+
+	return hsI
 }
