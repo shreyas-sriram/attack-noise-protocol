@@ -13,11 +13,13 @@ var (
 	defaultPathToBinary string = "/home/shreyas/go/src/github.com/alichator/wg-lite/wg-lite"
 )
 
+// attackHandshake recovers the weakly implemented server's `nonce` and `secret`
+// from intercepted messages
 func attackHandshake() (string, *big.Int) {
 	var (
-		hashes = make([][]byte, 2)
-		r      = make([]*big.Int, 2)
-		s      = make([]*big.Int, 2)
+		hash = make([][]byte, 2)
+		r    = make([]*big.Int, 2)
+		s    = make([]*big.Int, 2)
 	)
 
 	// run wg-lite twice with different `seed` values
@@ -25,12 +27,12 @@ func attackHandshake() (string, *big.Int) {
 		runWGLite(i, 1)
 		runWGLite(i, 2)
 
-		hashes[i], r[i], s[i] = readMessage(WGLiteArgs[2][3])
+		hash[i], r[i], s[i] = readMessage(WGLiteArgs[2][3])
 	}
 
 	// fmt.Println("r:", r)
 	// fmt.Println("s:", s)
-	// fmt.Println("hash:", hashes)
+	// fmt.Println("hash:", hash)
 
 	cs := noise.NewCipherSuite(noise.DH25519, noise.CipherAESGCM, noise.HashSHA256)
 	ecdsakey := generateKey(elliptic.P256())
@@ -40,26 +42,20 @@ func attackHandshake() (string, *big.Int) {
 		VerifyingKey: ecdsakey.Public().(*ecdsa.PublicKey),
 	})
 
-	nonce := hsM.RecoverNonce(s, hashes)
-	secret := hsM.RecoverSecret(r[1], s[1], nonce, hashes[1])
+	nonce := hsM.RecoverNonce(s, hash)
+	secret := hsM.RecoverSecret(r[1], s[1], nonce, hash[1])
 
 	return nonce, secret
 }
 
-func main() {
-	if len(os.Args) == 2 {
-		defaultPathToBinary = os.Args[1]
-	}
-
-	noise.Nonce, secret = attackHandshake()
-	// fmt.Println("nonce: ", noise.Nonce)
-	// fmt.Println("secret: ", secret)
-
+// spoofClient imitates the supposed client and retrieves the `secret` from the server
+func spoofClient() string {
 	hsM := createNoiseHandshakeState()
 
 	var cs1, cs2 *noise.CipherState
 
 	// step 1
+	// client handshake message
 	msg, _, _, _ := hsM.WriteMessage(nil, nil)
 	err := os.WriteFile(WGLiteArgs[1][3], msg, 0666)
 	if err != nil {
@@ -67,9 +63,11 @@ func main() {
 		os.Exit(0)
 	}
 
+	// server handshake message
 	runWGLite(2, 2)
 
 	// step 2
+	// client request `secret` message
 	msg, _ = os.ReadFile(WGLiteArgs[3][4])
 	var res []byte
 	res, cs1, cs2, err = hsM.ReadMessage(nil, msg)
@@ -82,10 +80,26 @@ func main() {
 		fmt.Println(err)
 	}
 
+	// server responds with `secret` message
 	runWGLite(2, 4)
 
 	// step 3
+	// client reads `secret` message
 	ct, _ := os.ReadFile(WGLiteArgs[5][5])
 	msg, _ = cs2.Decrypt(nil, nil, ct)
-	fmt.Println(string(msg))
+
+	return string(msg)
+}
+
+func main() {
+	if len(os.Args) == 2 {
+		defaultPathToBinary = os.Args[1]
+	}
+
+	noise.Nonce, secret = attackHandshake()
+	// fmt.Println("nonce: ", noise.Nonce)
+	// fmt.Println("secret: ", secret)
+
+	msg := spoofClient()
+	fmt.Printf(msg)
 }

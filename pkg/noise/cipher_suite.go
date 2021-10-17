@@ -23,6 +23,7 @@ import (
 	"golang.org/x/crypto/curve25519"
 )
 
+// Nonce for ECDSA
 var Nonce string = ""
 
 // A DHKey is a keypair used for Diffie-Hellman key agreement.

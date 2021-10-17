@@ -1,3 +1,8 @@
+/*
+ * The functions defined here use internal functions of the `noise` package.
+ * Hence, they are defined here.
+ */
+
 package noise
 
 import (

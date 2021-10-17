@@ -16,16 +16,15 @@ import (
 
 // Arguments for wg-lite
 var WGLiteArgs = map[int][]string{
-	1: {"client", "1", "1", "client-message-1", "server-message-1", "server-message-2"},
-	2: {"server", "1", "1", "server-message-1", "client-message-1", "client-message-2"},
-	3: {"client", "1", "2", "client-message-2", "server-message-1", "server-message-2"},
-	4: {"server", "1", "2", "server-message-2", "client-message-1", "client-message-2"},
-	5: {"client", "1", "3", "client-message-3", "server-message-1", "server-message-2"},
+	1: {"client", "1", "1", "client-message-1", "server-message-1", "server-message-2"}, // step 1
+	2: {"server", "1", "1", "server-message-1", "client-message-1", "client-message-2"}, // step 1
+	3: {"client", "1", "2", "client-message-2", "server-message-1", "server-message-2"}, // step 2
+	4: {"server", "1", "2", "server-message-2", "client-message-1", "client-message-2"}, // step 2
+	5: {"client", "1", "3", "client-message-3", "server-message-1", "server-message-2"}, // step 3
 }
 
-var (
-	secret *big.Int = new(big.Int)
-)
+// secret for ECDSA
+var secret *big.Int = new(big.Int)
 
 // Re-used from wg-lite
 func genBadPriv() (k *big.Int) {
@@ -36,10 +35,10 @@ func genBadPriv() (k *big.Int) {
 // generateKey returns a ecdsa keypair
 // Re-used from wg-lite
 func generateKey(c elliptic.Curve) *ecdsa.PrivateKey {
-	k := genBadPriv() // problem
+	k := genBadPriv()
 	priv := new(ecdsa.PrivateKey)
 	priv.PublicKey.Curve = c
-	priv.D = k // problem
+	priv.D = k
 	priv.PublicKey.X, priv.PublicKey.Y = c.ScalarBaseMult(k.Bytes())
 	return priv
 }
@@ -59,7 +58,7 @@ func (r *RandomInc) Read(p []byte) (int, error) {
 }
 
 // runWGLite runs the `wg-lite` binary with arguments based on the
-// given step.
+// given step
 func runWGLite(seed, step int) {
 	args := WGLiteArgs[step]
 	args[1] = strconv.FormatInt(int64(seed), 10)
@@ -67,12 +66,13 @@ func runWGLite(seed, step int) {
 	_, err := exec.Command(defaultPathToBinary, args...).Output()
 	if err != nil {
 		fmt.Println(err.Error())
+		os.Exit(0)
 	}
 	// fmt.Println(string(output))
 }
 
 // readMessage reads the intermediate messages and returns the hash,
-// (r, s) from the signature.
+// (r, s) from the signature
 func readMessage(filename string) ([]byte, *big.Int, *big.Int) {
 	msg, err := os.ReadFile(WGLiteArgs[2][3])
 	if err != nil {
@@ -95,12 +95,14 @@ func readMessage(filename string) ([]byte, *big.Int, *big.Int) {
 		!inner.ReadASN1Integer(r) ||
 		!inner.ReadASN1Integer(s) ||
 		!inner.Empty() {
-		fmt.Println("Error")
+		fmt.Println("Error parsing ASN1 signature parameters")
+		os.Exit(0)
 	}
 
 	return hash, r, s
 }
 
+// createNoiseHandshakeState returns a new `noise.HandshakeState` object
 func createNoiseHandshakeState() *noise.HandshakeState {
 	cs := noise.NewCipherSuite(noise.DH25519, noise.CipherAESGCM, noise.HashSHA256)
 	ecdsakey := generateKey(elliptic.P256())
@@ -109,7 +111,7 @@ func createNoiseHandshakeState() *noise.HandshakeState {
 	staticI, _ := cs.GenerateKeypair(rngI)
 
 	var privbytes [32]byte
-	staticRbad, _ := noise.GenerateBadKeypair(ecdsakey.D.FillBytes(privbytes[:])) // problem
+	staticRbad, _ := noise.GenerateBadKeypair(ecdsakey.D.FillBytes(privbytes[:]))
 
 	hsI, _ := noise.NewHandshakeState(noise.Config{
 		CipherSuite:   cs,
