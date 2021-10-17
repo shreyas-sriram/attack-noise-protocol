@@ -1,3 +1,4 @@
 compromiser
 client-*
 server-*
+**/*.zip
